@@ -6,10 +6,23 @@ import { eq } from "drizzle-orm";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 
-export async function getPost() {
+/**
+ * Récupère tous les articles ou un article spécifique par son ID (UUID)
+ */
+export async function getPost(id?: string) {
+  if (id) {
+    const results = await db
+      .select()
+      .from(blogTable)
+      .where(eq(blogTable.id, id));
+    return results[0] || null;
+  }
   return await db.select().from(blogTable);
 }
 
+/**
+ * Crée un nouvel article avec génération automatique de l'URL
+ */
 export async function createPost(form: FormData) {
   const title = String(form.get("title"));
 
@@ -17,40 +30,46 @@ export async function createPost(form: FormData) {
   const cleanUrl = title
     .toLowerCase()
     .trim()
-    .normalize("NFD") // Sépare les accents des lettres
-    .replace(/[\u0300-\u036f]/g, "") // Supprime les accents
-    .replace(/\s+/g, "-") // Remplace les espaces par des tirets
-    .replace(/[^\w-]+/g, "") // Supprime tout ce qui n'est pas lettre, chiffre ou tiret
-    .replace(/--+/g, "-"); // Évite les doubles tirets
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/[^\w-]+/g, "")
+    .replace(/--+/g, "-");
 
-  // 2. On crée l'URL finale
-  // Résultat : /blog/article/mon-premier-article
   const finalUrl = `/blog/article/${cleanUrl}`;
 
-  // 3. On insère dans la DB
+  // 2. Insertion dans la DB (L'ID UUID est généré automatiquement par la DB)
   await db.insert(blogTable).values({
-    // On ne met pas l'ID ici car la DB va utiliser .defaultRandom() toute seule
     title: title,
     content: String(form.get("content")),
     author: String(form.get("author")),
-    url: finalUrl, // Ton URL propre et lisible
+    url: finalUrl,
   });
 
   redirect((await headers()).get("referer") ?? "/");
 }
 
-export async function editPost(form: FormData) {
+/**
+ * Met à jour un article, incluant le titre, le contenu ET l'auteur
+ */
+export async function editPost(id: string, form: FormData) {
   await db
     .update(blogTable)
     .set({
       title: String(form.get("title")),
       content: String(form.get("content")),
+      author: String(form.get("author")), // Ajout de la modification de l'auteur
     })
-    .where(eq(blogTable.id, String(form.get("id"))));
-  redirect((await headers()).get("referer") ?? "/");
+    .where(eq(blogTable.id, id)); // Utilisation de l'ID passé en paramètre
+
+  // Redirection vers la page de l'article ou l'accueil
+  redirect(`/blog/${id}`);
 }
 
+/**
+ * Supprime un article par son ID (UUID)
+ */
 export async function deletePost(id: string) {
   await db.delete(blogTable).where(eq(blogTable.id, id));
-  redirect((await headers()).get("referer") ?? "/");
+  redirect("/blog"); // Redirection vers la liste des articles après suppression
 }
